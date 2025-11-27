@@ -51,7 +51,10 @@ public class ChunkBinary implements Serializable {
         if (Config.writeChunksAsNbt()) {
             String filename = (isEntities ? "E" : "B") + chunk.location.getX() + "_" + chunk.location.getZ();
 
-            Path output = PathUtils.toPath(Config.getWorldOutputDir(), "debug", filename);
+            String root = chunk.location.getDimension().getWorldStorageKey();
+            Path output = root.isBlank()
+                ? PathUtils.toPath(Config.getWorldOutputDir(), "debug", filename)
+                : PathUtils.toPath(Config.getWorldOutputDir(), root, "debug", filename);
             Files.createDirectories(output.getParent());
             Files.write(output, Collections.singleton(nbt.tag.toString()));
         }

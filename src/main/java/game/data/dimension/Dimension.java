@@ -30,15 +30,23 @@ public class Dimension {
     private final String namespace;
     private final String name;
     private String type;
+    private final Long hashedSeed;
+    private final String worldStorageKey;
 
     Dimension(String namespace, String name, String type) {
-        this(namespace, name);
-        this.type = type;
+        this(namespace, name, type, null, null);
     }
 
     Dimension(String namespace, String name) {
+        this(namespace, name, null, null, null);
+    }
+
+    private Dimension(String namespace, String name, String type, Long hashedSeed, String worldStorageKey) {
         this.namespace = namespace;
         this.name = name;
+        this.type = type;
+        this.hashedSeed = hashedSeed;
+        this.worldStorageKey = worldStorageKey;
     }
 
     public String getType() {
@@ -61,19 +69,21 @@ public class Dimension {
      * Find the dimension from it's identifier name. For custom dimensions we need to consult the codec.
      */
     public static Dimension fromString(String readString) {
+        return fromString(readString, null);
+    }
+
+    public static Dimension fromString(String readString, Long hashedSeed) {
+        DimensionRegistry registry = WorldManager.getInstance().getDimensionRegistry();
+        if (registry != null) {
+            return registry.getDimension(readString, hashedSeed);
+        }
+
         switch (readString) {
             case "minecraft:the_end": return END;
             case "minecraft:the_nether": return NETHER;
             case "minecraft:overworld": return OVERWORLD;
-            default: {
-                DimensionRegistry registry = WorldManager.getInstance().getDimensionRegistry();
-                if (registry == null) { return OVERWORLD; }
-
-                Dimension dim = registry.getDimension(readString);
-                if (dim == null) { return OVERWORLD; }
-
-                return dim;
-            }
+            default:
+                return OVERWORLD;
         }
     }
 
@@ -89,16 +99,18 @@ public class Dimension {
      * Path where the world should be saved to. For custom dimensions it depends on the name and namespace.
      */
     public String getPath() {
-        if (namespace.equals("minecraft")) {
-            switch (name) {
-                case "the_nether": return "DIM-1";
-                case "the_end": return "DIM1";
-                case "overworld": return"";
-            }
-            return name;
+        String base = getDimensionRelativePath();
+        String root = getWorldStorageKey();
+
+        if (root.isEmpty()) {
+            return base;
         }
 
-        return Paths.get("dimensions", namespace, name).toString();
+        if (base == null || base.isEmpty()) {
+            return root;
+        }
+
+        return Paths.get(root, base).toString();
     }
 
     /**
@@ -132,7 +144,7 @@ public class Dimension {
             this.type = type.getName();
 
             // re-write since we write the dimension information on join otherwise
-            attempt(() -> write(PathUtils.toPath(Config.getWorldOutputDir(), "datapacks", "downloaded", "data")));
+            attempt(() -> write(PathUtils.toPath(Config.getWorldOutputDir(), getWorldStorageKey(), "datapacks", "downloaded", "data")));
         }
     }
 
@@ -144,13 +156,15 @@ public class Dimension {
         Dimension dimension = (Dimension) o;
 
         if (!Objects.equals(namespace, dimension.namespace)) return false;
-        return Objects.equals(name, dimension.name);
+        if (!Objects.equals(name, dimension.name)) return false;
+        return Objects.equals(getWorldStorageKey(), dimension.getWorldStorageKey());
     }
 
     @Override
     public int hashCode() {
         int result = namespace != null ? namespace.hashCode() : 0;
         result = 31 * result + (name != null ? name.hashCode() : 0);
+        result = 31 * result + getWorldStorageKey().hashCode();
         return result;
     }
 
@@ -180,11 +194,40 @@ public class Dimension {
         Chunk_1_17.setWorldHeight(minY, height);
 
         // re-write since we write the dimension information on join otherwise
-        attempt(() -> write(PathUtils.toPath(Config.getWorldOutputDir(), "datapacks", "downloaded", "data")));
+        attempt(() -> write(PathUtils.toPath(Config.getWorldOutputDir(), getWorldStorageKey(), "datapacks", "downloaded", "data")));
     }
 
     public boolean isNether() {
-        return this == NETHER;
+        return namespace.equals("minecraft") && name.equals("the_nether");
+    }
+
+    public Dimension withoutWorldContext() {
+        return new Dimension(namespace, name, type, null, null);
+    }
+
+    public Dimension withWorldContext(Long hashedSeed, String storageKey) {
+        return new Dimension(namespace, name, type, hashedSeed, storageKey);
+    }
+
+    public Long getHashedSeed() {
+        return hashedSeed;
+    }
+
+    public String getWorldStorageKey() {
+        return worldStorageKey == null ? "" : worldStorageKey;
+    }
+
+    private String getDimensionRelativePath() {
+        if (namespace.equals("minecraft")) {
+            switch (name) {
+                case "the_nether": return "DIM-1";
+                case "the_end": return "DIM1";
+                case "overworld": return "";
+            }
+            return name;
+        }
+
+        return Paths.get("dimensions", namespace, name).toString();
     }
 }
 

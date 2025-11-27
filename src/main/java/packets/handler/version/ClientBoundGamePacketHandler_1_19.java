@@ -11,6 +11,7 @@ import config.Config;
 import game.data.WorldManager;
 import game.data.dimension.Dimension;
 import game.data.dimension.DimensionRegistry;
+import game.data.dimension.DimensionType;
 import game.protocol.Protocol;
 import java.util.Map;
 import packets.builder.PacketBuilder;
@@ -44,17 +45,28 @@ public class ClientBoundGamePacketHandler_1_19 extends ClientBoundGamePacketHand
             String dimensionType = provider.readString();
             // current active dimension
             String worldName = provider.readString();
-            Dimension dimension = Dimension.fromString(worldName);
+            long hashedSeed = provider.readLong();
+            int maxPlayers = provider.readVarInt();
+
+            WorldManager worldManager = WorldManager.getInstance();
+            Dimension dimension = Dimension.fromString(worldName, hashedSeed);
             dimension.setType(dimensionType);
-            WorldManager.getInstance().setDimension(dimension);
+            worldManager.setDimension(dimension);
+            DimensionRegistry currentRegistry = worldManager.getDimensionRegistry();
+            if (currentRegistry != null) {
+                DimensionType type = currentRegistry.getDimensionType(dimensionType);
+                if (type != null) {
+                    worldManager.setDimensionType(type);
+                }
+            }
 
             replacement.writeVarInt(numDimensions);
             replacement.writeStringArray(dimensionNames);
             replacement.writeNbt(nbt);
             replacement.writeString(dimensionType);
             replacement.writeString(worldName);
-
-            replacement.copy(provider, LONG, VARINT);
+            replacement.writeLong(hashedSeed);
+            replacement.writeVarInt(maxPlayers);
 
             // extend view distance communicated to the client to the given value
             int viewDist = provider.readVarInt();
@@ -77,10 +89,21 @@ public class ClientBoundGamePacketHandler_1_19 extends ClientBoundGamePacketHand
 
         operators.put("Respawn", provider -> {
             String dimensionType = provider.readString();
-            Dimension dimension = Dimension.fromString(provider.readString());
+            String worldName = provider.readString();
+            long hashedSeed = provider.readLong();
+
+            Dimension dimension = Dimension.fromString(worldName, hashedSeed);
             dimension.setType(dimensionType);
 
-            WorldManager.getInstance().setDimension(dimension);
+            WorldManager worldManager = WorldManager.getInstance();
+            worldManager.setDimension(dimension);
+            DimensionRegistry registry = worldManager.getDimensionRegistry();
+            if (registry != null) {
+                DimensionType type = registry.getDimensionType(dimensionType);
+                if (type != null) {
+                    worldManager.setDimensionType(type);
+                }
+            }
             WorldManager.getInstance().getEntityRegistry().reset();
 
             return true;

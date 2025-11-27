@@ -6,6 +6,7 @@ import game.data.WorldManager;
 import game.data.coordinates.Coordinate3D;
 import game.data.dimension.Dimension;
 import game.data.dimension.DimensionRegistry;
+import game.data.dimension.DimensionType;
 import game.protocol.Protocol;
 import packets.builder.PacketBuilder;
 import packets.handler.PacketOperator;
@@ -41,18 +42,31 @@ public class ClientBoundGamePacketHandler_1_16 extends ClientBoundGamePacketHand
             SpecificTag dimensionNbt = provider.readNbtTag();
 
             // current active dimension
+            String dimensionType = provider.readString();
             String worldName = provider.readString();
-            Dimension dimension = Dimension.fromString(worldName);
+            long hashedSeed = provider.readLong();
+            int maxPlayers = provider.readVarInt();
+
+            WorldManager worldManager = WorldManager.getInstance();
+            Dimension dimension = Dimension.fromString(worldName, hashedSeed);
             dimension.registerType(dimensionNbt);
-            WorldManager.getInstance().setDimension(dimension);
+            worldManager.setDimension(dimension);
+            DimensionRegistry currentRegistry = worldManager.getDimensionRegistry();
+            if (currentRegistry != null) {
+                DimensionType type = currentRegistry.getDimensionType(dimensionType);
+                if (type != null) {
+                    worldManager.setDimensionType(type);
+                }
+            }
 
             replacement.writeVarInt(numDimensions);
             replacement.writeStringArray(dimensionNames);
             replacement.writeNbt(dimensionCodec);
             replacement.writeNbt(dimensionNbt);
+            replacement.writeString(dimensionType);
             replacement.writeString(worldName);
-
-            replacement.copy(provider, LONG, VARINT);
+            replacement.writeLong(hashedSeed);
+            replacement.writeVarInt(maxPlayers);
 
             // extend view distance communicated to the client to the given value
             int viewDist = provider.readVarInt();
@@ -70,7 +84,10 @@ public class ClientBoundGamePacketHandler_1_16 extends ClientBoundGamePacketHand
 
         operators.put("Respawn", provider -> {
             SpecificTag dimensionNbt = provider.readNbtTag();
-            Dimension dimension = Dimension.fromString(provider.readString());
+            String worldName = provider.readString();
+            long hashedSeed = provider.readLong();
+
+            Dimension dimension = Dimension.fromString(worldName, hashedSeed);
             dimension.registerType(dimensionNbt);
             WorldManager.getInstance().setDimension(dimension);
             WorldManager.getInstance().getEntityRegistry().reset();

@@ -3,6 +3,7 @@ package packets.handler.version;
 import config.Config;
 import game.data.WorldManager;
 import game.data.dimension.Dimension;
+import game.data.dimension.DimensionType;
 import game.data.entity.EntityRegistry;
 import game.protocol.Protocol;
 import packets.builder.PacketBuilder;
@@ -45,15 +46,28 @@ public class ClientBoundGamePacketHandler_1_20_2 extends ClientBoundGamePacketHa
             // current active dimension
             String dimensionType = provider.readString();
             String dimensionName = provider.readString();
-            Dimension dimension = Dimension.fromString(dimensionName);
+            long hashedSeed = provider.readLong();
+            byte gameMode = provider.readNext();
+            byte previousGameMode = provider.readNext();
+            boolean isDebug = provider.readBoolean();
+            boolean isFlat = provider.readBoolean();
+
+            WorldManager worldManager = WorldManager.getInstance();
+            Dimension dimension = Dimension.fromString(dimensionName, hashedSeed);
             dimension.setType(dimensionType);
-            WorldManager.getInstance().setDimension(dimension);
-            WorldManager.getInstance().setDimensionType(WorldManager.getInstance().getDimensionRegistry().getDimensionType(dimensionType));
+            worldManager.setDimension(dimension);
+            DimensionType type = worldManager.getDimensionRegistry().getDimensionType(dimensionType);
+            if (type != null) {
+                worldManager.setDimensionType(type);
+            }
 
             replacement.writeString(dimensionType);
             replacement.writeString(dimensionName);
-
-            replacement.copy(provider, LONG, BYTE, BYTE, BOOL, BOOL);
+            replacement.writeLong(hashedSeed);
+            replacement.writeByte(gameMode);
+            replacement.writeByte(previousGameMode);
+            replacement.writeBoolean(isDebug);
+            replacement.writeBoolean(isFlat);
 
             replacement.copyRemainder(provider);
 

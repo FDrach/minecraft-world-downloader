@@ -24,8 +24,8 @@ import java.util.stream.Collectors;
 
 public class LevelData {
     private final WorldManager worldManager;
-    private final Path outputDir;
-    private final File file;
+    private Path outputDir;
+    private File file;
     private Tag root;
     private SpecificTag worldGenSettings;
     private CompoundTag data;
@@ -33,12 +33,12 @@ public class LevelData {
 
 
     private List<Consumer<Tag>> levelDataModifiers;
+    private String worldStorageKey = "";
 
     public LevelData(WorldManager worldManager) {
         this.worldManager = worldManager;
-        this.outputDir = PathUtils.toPath(Config.getWorldOutputDir());
-        this.file = Paths.get(outputDir.toString(), "level.dat").toFile();
         this.levelDataModifiers = new ArrayList<>();
+        refreshPaths();
         attempt(this::load);
     }
 
@@ -75,6 +75,7 @@ public class LevelData {
         loadGeneratorSettings();
     }
     private void load(boolean forceInternal) throws IOException {
+        refreshPaths();
         Files.createDirectories(outputDir);
 
         InputStream fileInput;
@@ -95,6 +96,20 @@ public class LevelData {
         }
 
         this.data = (CompoundTag) root.unpack().get("Data");
+    }
+
+    public void onWorldChanged(Dimension dimension) {
+        this.worldStorageKey = dimension == null ? "" : dimension.getWorldStorageKey();
+        this.savingBroken = false;
+        attemptQuietLoad();
+    }
+
+    private void attemptQuietLoad() {
+        try {
+            load();
+        } catch (IOException e) {
+            // ignore, will fall back to defaults when saving
+        }
     }
 
     /**
@@ -180,6 +195,15 @@ public class LevelData {
 
         // write the file
         NbtUtil.write(root, file.toPath());
+    }
+
+    private void refreshPaths() {
+        if (worldStorageKey == null || worldStorageKey.isBlank()) {
+            this.outputDir = PathUtils.toPath(Config.getWorldOutputDir());
+        } else {
+            this.outputDir = PathUtils.toPath(Config.getWorldOutputDir(), worldStorageKey);
+        }
+        this.file = Paths.get(outputDir.toString(), "level.dat").toFile();
     }
 
     private void enableWorldGeneration(CompoundTag data) {

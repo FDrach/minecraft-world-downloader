@@ -1,14 +1,17 @@
 package game.data.dimension;
 
 import com.google.gson.*;
-import config.Config;
 import game.data.chunk.palette.Registry;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
 import packets.DataTypeProvider;
 import se.llbit.nbt.*;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
@@ -56,20 +59,22 @@ public class DimensionRegistry {
 
     private BiomeRegistry biomeRegistry;
 
-    private final Map<String, Dimension> dimensions;
+    private final Map<String, List<Dimension>> dimensions;
     private final Map<Integer, DimensionType> dimensionTypesByID;
     private final Map<String, DimensionType> dimensionTypesByName;
     private final Map<String, Biome> biomes;
+    private final Map<Long, String> worldStorageRoots;
 
     private DimensionRegistry() {
         this.dimensions = new HashMap<>();
         this.dimensionTypesByName = new HashMap<>();
         this.dimensionTypesByID = new HashMap<>();
         this.biomes = new HashMap<>();
+        this.worldStorageRoots = new HashMap<>();
 
-        this.dimensions.put("minecraft:overworld", Dimension.OVERWORLD);
-        this.dimensions.put("minecraft:the_nether", Dimension.NETHER);
-        this.dimensions.put("minecraft:the_end", Dimension.END);
+        registerPrototype(Dimension.OVERWORLD.withoutWorldContext());
+        registerPrototype(Dimension.NETHER.withoutWorldContext());
+        registerPrototype(Dimension.END.withoutWorldContext());
     }
 
     public static DimensionRegistry empty() {
@@ -90,7 +95,7 @@ public class DimensionRegistry {
     }
 
     public Collection<Dimension> getDimensions() {
-        return dimensions.values();
+        return dimensions.values().stream().flatMap(List::stream).collect(Collectors.toUnmodifiableList());
     }
 
     private void readDimensions(String[] dimensionNames) {
@@ -99,7 +104,11 @@ public class DimensionRegistry {
             String namespace = parts[0];
             String name = parts[1];
 
-            this.dimensions.put(dimensionName, new Dimension(namespace, name));
+            List<Dimension> dims = dimensions.computeIfAbsent(dimensionName, key -> new ArrayList<>());
+            boolean hasPrototype = dims.stream().anyMatch(d -> d.getHashedSeed() == null);
+            if (!hasPrototype) {
+                dims.add(new Dimension(namespace, name));
+            }
         }
     }
 
@@ -141,14 +150,32 @@ public class DimensionRegistry {
     }
 
     public Dimension getDimension(String name) {
-        var dim = dimensions.get(name);
+        List<Dimension> dimList = dimensions.get(name);
 
-        if (dim == null) {
+        if (dimList == null || dimList.isEmpty()) {
             System.out.println("Warning: Dimension " + name + " not found, using overworld");
             return Dimension.OVERWORLD;
         }
 
-        return dim;
+        return dimList.get(0);
+    }
+
+    public Dimension getDimension(String name, Long hashedSeed) {
+        if (hashedSeed == null) {
+            return getDimension(name);
+        }
+
+        List<Dimension> dimList = dimensions.computeIfAbsent(name, key -> new ArrayList<>());
+        for (Dimension dim : dimList) {
+            if (Objects.equals(dim.getHashedSeed(), hashedSeed)) {
+                return dim;
+            }
+        }
+
+        Dimension base = dimList.isEmpty() ? createPrototype(name) : dimList.get(0);
+        Dimension variant = base.withWorldContext(hashedSeed, worldStorageKey(hashedSeed));
+        dimList.add(variant);
+        return variant;
     }
 
     /**
@@ -171,7 +198,7 @@ public class DimensionRegistry {
             return false;
         }
 
-        for (Dimension d : dimensions.values()) {
+        for (Dimension d : getDimensions()) {
             d.write(destination);
         }
 
@@ -221,5 +248,27 @@ public class DimensionRegistry {
             this.dimensionTypesByID.put(id, type);
             this.dimensionTypesByName.put(type.getName(), type);
         }
+    }
+
+    private void registerPrototype(Dimension dimension) {
+        dimensions.computeIfAbsent(dimension.getName(), key -> new ArrayList<>()).add(dimension);
+    }
+
+    private Dimension createPrototype(String fullName) {
+        String[] parts = fullName.split(":");
+        String namespace = parts.length > 0 ? parts[0] : "minecraft";
+        String name = parts.length > 1 ? parts[1] : fullName;
+        Dimension prototype = new Dimension(namespace, name);
+        dimensions.computeIfAbsent(fullName, key -> new ArrayList<>()).add(prototype);
+        return prototype;
+    }
+
+    private String worldStorageKey(Long hashedSeed) {
+        if (hashedSeed == null) {
+            return "";
+        }
+        return worldStorageRoots.computeIfAbsent(hashedSeed, seed ->
+            Paths.get("worlds", "seed_" + Long.toUnsignedString(seed, 16)).toString()
+        );
     }
 }

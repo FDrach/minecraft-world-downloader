@@ -1,6 +1,7 @@
 package game.data.maps;
 
 import config.Config;
+import game.data.WorldManager;
 import packets.DataTypeProvider;
 import se.llbit.nbt.CompoundTag;
 import se.llbit.nbt.IntTag;
@@ -26,9 +27,9 @@ import static util.ExceptionHandling.attempt;
  * Handle storing of the map item.
  */
 public class MapRegistry {
-    private final String registryFileName = "idcounts.dat";
-    private final Path dataDir = PathUtils.toPath(Config.getWorldOutputDir(),  "data");
-    private final File registryFile = Paths.get(dataDir.toString(), registryFileName).toFile();
+    private static final String REGISTRY_FILE_NAME = "idcounts.dat";
+
+    private final WorldManager worldManager;
 
     private final Map<Integer, PlayerMap> maps;
     private final Set<Integer> updatedSince;
@@ -36,16 +37,12 @@ public class MapRegistry {
 
     private final ExecutorService executor;
 
-    public MapRegistry() {
+    public MapRegistry(WorldManager worldManager) {
+        this.worldManager = worldManager;
         this.maps = new ConcurrentHashMap<>();
         this.updatedSince = ConcurrentHashMap.newKeySet();
 
-        try {
-            read();
-        } catch (IOException e) {
-            e.printStackTrace();
-            // if we can't read it, thats fine, we'll use maxId = 0
-        }
+        reload();
 
         this.executor = Executors.newSingleThreadExecutor(r -> new Thread(r, "Map Parser Service"));;
     }
@@ -54,6 +51,7 @@ public class MapRegistry {
      * Read in the maximum map ID from the existing data file, if it exists.
      */
     private void read() throws IOException {
+        File registryFile = registryFile();
         if (!registryFile.exists()) {
             return;
         }
@@ -67,6 +65,7 @@ public class MapRegistry {
      * Save the number of maps in the idcount file, then save each map that changed since we saved last time.
      */
     public void save() throws IOException {
+        Path dataDir = dataDir();
         Files.createDirectories(dataDir);
 
         CompoundTag data = new CompoundTag();
@@ -74,7 +73,7 @@ public class MapRegistry {
         CompoundTag root = new CompoundTag();
         root.add("data", data);
 
-        NbtUtil.write(new NamedTag("", root), registryFile.toPath());
+        NbtUtil.write(new NamedTag("", root), registryFile().toPath());
 
         updatedSince.forEach((id) -> {
             PlayerMap map = maps.get(id);
@@ -105,5 +104,37 @@ public class MapRegistry {
 
     public int countActiveMaps() {
         return this.maps.size();
+    }
+
+    public void onWorldChanged() {
+        reload();
+    }
+
+    private void reload() {
+        this.maps.clear();
+        this.updatedSince.clear();
+        this.maxMapId = 0;
+
+        try {
+            read();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private Path dataDir() {
+        String worldKey = worldManager != null && worldManager.getDimension() != null
+            ? worldManager.getDimension().getWorldStorageKey()
+            : "";
+
+        if (worldKey == null || worldKey.isBlank()) {
+            return PathUtils.toPath(Config.getWorldOutputDir(), "data");
+        }
+        return PathUtils.toPath(Config.getWorldOutputDir(), worldKey, "data");
+    }
+
+    private File registryFile() {
+        Path dir = dataDir();
+        return Paths.get(dir.toString(), REGISTRY_FILE_NAME).toFile();
     }
 }

@@ -7,6 +7,8 @@ import static packets.builder.NetworkType.VARINT;
 import config.Config;
 import game.NetworkMode;
 import game.data.WorldManager;
+import game.data.dimension.Dimension;
+import game.data.dimension.DimensionType;
 import game.protocol.Protocol;
 import java.util.Arrays;
 import java.util.Map;
@@ -75,16 +77,23 @@ public class ClientBoundGamePacketHandler_1_20_6 extends ClientBoundGamePacketHa
 
     private void commonInfo(DataTypeProvider provider, PacketBuilder replacement) {
         // handle dimension codec
-        int dimensionType = provider.readVarInt();
+        int dimensionTypeId = provider.readVarInt();
         String dimensionName = provider.readString();
+        long hashedSeed = provider.readLong();
 
         world = WorldManager.getInstance();
-        world.setDimension(world.getDimensionRegistry().getDimension(dimensionName));
-        world.setDimensionType(world.getDimensionRegistry().getDimensionType(dimensionType));
+        Dimension dimension = world.getDimensionRegistry().getDimension(dimensionName, hashedSeed);
+        DimensionType type = world.getDimensionRegistry().getDimensionType(dimensionTypeId);
+        if (type != null) {
+            dimension.setType(type.getName());
+            world.setDimensionType(type);
+        }
+        world.setDimension(dimension);
 
         if (replacement != null) {
-            replacement.writeVarInt(dimensionType);
+            replacement.writeVarInt(dimensionTypeId);
             replacement.writeString(dimensionName);
+            replacement.writeLong(hashedSeed);
             replacement.copyRemainder(provider);
         }
     }

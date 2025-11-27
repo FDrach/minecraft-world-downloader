@@ -101,7 +101,7 @@ public class WorldManager {
         this.entityMap = new EntityNames();
         this.entityRegistry = new EntityRegistry(this);
         this.chunkFactory = new ChunkFactory();
-        this.mapRegistry = new MapRegistry();
+        this.mapRegistry = new MapRegistry(this);
 
         this.levelData = new LevelData(this);
 
@@ -156,6 +156,8 @@ public class WorldManager {
 
         saveAndUnloadChunks();
         this.dimension = dimension;
+        this.levelData.onWorldChanged(dimension);
+        this.mapRegistry.onWorldChanged();
 
         this.renderDistanceExtender.reset();
 
@@ -403,7 +405,10 @@ public class WorldManager {
 
         // We can immediately try to write the dimension data to the proper directory.
         try {
-            Path p = PathUtils.toPath(Config.getWorldOutputDir(), "datapacks", "downloaded", "data");
+            String worldRoot = this.dimension != null ? this.dimension.getWorldStorageKey() : "";
+            Path p = worldRoot.isBlank()
+                ? PathUtils.toPath(Config.getWorldOutputDir(), "datapacks", "downloaded", "data")
+                : PathUtils.toPath(Config.getWorldOutputDir(), worldRoot, "datapacks", "downloaded", "data");
             if (registry.write(p)) {
 
                 // we need to copy that pack.mcmeta file from so that Minecraft will recognise the datapack

@@ -73,7 +73,8 @@ public class RegionImageHandler {
 
     public void clear() {
         unload();
-        attemptQuiet(() -> FileUtils.deleteDirectory(Paths.get(Config.getWorldOutputDir(), CACHE_PATH).toFile()));
+        Path cacheRoot = Paths.get(Config.getWorldOutputDir(), CACHE_PATH);
+        attemptQuiet(() -> FileUtils.deleteDirectory(cacheRoot.toFile()));
     }
 
     public void drawChunk(CoordinateDim2D coordinate, Map<ImageMode, Image> imageMap, Boolean isSaved) {
@@ -174,7 +175,7 @@ public class RegionImageHandler {
     }
 
     public void setDimension(Dimension dimension) {
-        if (this.activeDimension == dimension) {
+        if (this.activeDimension != null && this.activeDimension.equals(dimension)) {
             return;
         }
 
